@@ -1,0 +1,35 @@
+{
+    "name": "マクドナルド配置アプリ",
+    "short_name": "配置アプリ",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#f59e0b",
+    "theme_color": "#f59e0b",
+    "description": "マクドナルド配置アプリ - クルー配置最適化PWA",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
