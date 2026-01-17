@@ -184,82 +184,79 @@ class _AllocationScreenState extends State<AllocationScreen> {
   List<Widget> _buildAllocationResults(AllocationResult result) {
     final widgets = <Widget>[];
 
-    // ライダー
-    if (result.riders.isNotEmpty) {
-      widgets.add(_buildResultCard(
-        '🏍️ ライダー',
-        result.riders,
-        Colors.green,
-      ));
+    // 統計情報カード
+    final stats = AllocationService.getDetailedStats(result);
+    widgets.add(
+      Card(
+        elevation: 2,
+        color: Colors.orange.shade50,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.analytics, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text(
+                    '配置サマリー',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildStatRow('配置済み', '${stats['totalAssigned']}人'),
+              _buildStatRow('未配置', '${stats['unassignedCount']}人'),
+              _buildStatRow('厨房ポジション', '${stats['kitchenPositions']}'),
+              _buildStatRow('カウンターポジション', '${stats['counterPositions']}'),
+              _buildStatRow('両対応ポジション', '${stats['bothPositions']}'),
+              _buildStatRow('平均スキル', stats['averageSkill']),
+            ],
+          ),
+        ),
+      ),
+    );
+    widgets.add(const SizedBox(height: 16));
+
+    // 重要度順にポジション配置を表示
+    final sortedAssignments = result.getSortedByPriority();
+    
+    for (final assignment in sortedAssignments) {
+      widgets.add(_buildPositionCard(assignment));
     }
 
-    // ポテト
-    if (result.potato.isNotEmpty) {
-      widgets.add(_buildResultCard(
-        '🔥 ポテト担当',
-        result.potato,
-        Colors.orange,
-      ));
-    }
-
-    // 厨房
-    if (result.kitchen.isNotEmpty) {
-      widgets.add(_buildResultCard(
-        '🍳 厨房',
-        result.kitchen,
-        Colors.red,
-      ));
-    }
-
-    // カウンター
-    if (result.counter.isNotEmpty) {
-      widgets.add(_buildResultCard(
-        '💻 カウンター',
-        result.counter,
-        Colors.blue,
-      ));
-    }
-
-    // ドライブスルー
-    if (result.drive.isNotEmpty) {
-      widgets.add(_buildResultCard(
-        '🚗 ドライブスルー',
-        result.drive,
-        Colors.purple,
-      ));
-    }
-
-    // その他
-    final others = <String>[];
-    if (result.outside.isNotEmpty) {
-      others.add('外キャッシャー: ${result.outside.length}人');
-    }
-    if (result.hot.isNotEmpty) {
-      others.add('ホット: ${result.hot.length}人');
-    }
-
-    if (others.isNotEmpty) {
+    // 未配置クルー
+    if (result.unassigned.isNotEmpty) {
       widgets.add(
         Card(
           elevation: 2,
-          color: Colors.grey.shade700,
+          color: Colors.grey.shade300,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'その他',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.person_off, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(
+                      '未配置クルー (${result.unassigned.length}人)',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  others.join(' / '),
-                  style: const TextStyle(color: Colors.white),
+                  result.unassigned.map((c) => c.name).join(', '),
+                  style: const TextStyle(fontSize: 14),
                 ),
               ],
             ),
@@ -272,42 +269,142 @@ class _AllocationScreenState extends State<AllocationScreen> {
     return widgets;
   }
 
-  Widget _buildResultCard(String title, List crews, Color color) {
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPositionCard(assignment) {
+    final position = assignment.position;
+    final crew = assignment.assignedCrew;
+    final isAssigned = assignment.isAssigned;
+
+    // 重要度に応じた色
+    Color getColorByPriority(int priority) {
+      if (priority >= 9) return Colors.red;
+      if (priority >= 7) return Colors.orange;
+      if (priority >= 5) return Colors.blue;
+      return Colors.green;
+    }
+
+    final color = getColorByPriority(position.priority);
+
     return Column(
       children: [
         Card(
           elevation: 2,
-          color: color,
+          color: isAssigned ? color : Colors.grey.shade400,
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                    Expanded(
+                      child: Text(
+                        position.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${crews.length}人',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white70,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '重要度: ${position.priority}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  crews.map((c) => c.name).join(', '),
-                  style: const TextStyle(color: Colors.white),
-                ),
+                if (isAssigned) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.person, size: 16, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        crew!.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.restaurant, size: 14, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        '厨房: ${crew.kitchenSkill}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Icon(Icons.storefront, size: 14, color: Colors.white70),
+                      const SizedBox(width: 4),
+                      Text(
+                        'カウンター: ${crew.counterSkill}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white70,
+                        ),
+                      ),
+                    ],
+                  ),
+                ] else ...[
+                  const Row(
+                    children: [
+                      Icon(Icons.warning, size: 16, color: Colors.white70),
+                      SizedBox(width: 4),
+                      Text(
+                        '未配置',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white70,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
