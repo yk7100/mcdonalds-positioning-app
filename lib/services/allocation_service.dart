@@ -2,9 +2,9 @@ import '../models/crew.dart';
 import '../models/position.dart';
 import '../models/allocation_result.dart';
 
-/// 配置計算サービス (11ポジション対応)
+/// 配置計算サービス (11ポジション対応 - 重要度優先)
 class AllocationService {
-  /// 最適配置を計算
+  /// 最適配置を計算（重要度優先アルゴリズム）
   static AllocationResult calculateOptimalAllocation(
     List<Crew> crews,
     int totalStaff,
@@ -13,15 +13,13 @@ class AllocationService {
     // 重要度順にポジションを取得
     final positions = Position.getSortedByPriority();
     
-    // クルーを総合スキルの高い順にソート
-    final availableCrews = List<Crew>.from(crews)
-      ..sort((a, b) => b.totalSkill.compareTo(a.totalSkill));
-
     // 配置結果を初期化
     final assignments = <PositionAssignment>[];
     final assignedCrewIds = <int>{};
+    final availableCrews = List<Crew>.from(crews);
 
-    // 各ポジションに対して最適なクルーを配置
+    // フェーズ1: 重要度の高いポジションから順に最適なクルーを配置
+    // まず厳格な基準で配置を試みる
     for (final position in positions) {
       Crew? bestCrew;
       int bestScore = 0;
@@ -35,6 +33,7 @@ class AllocationService {
           crew.kitchenSkill,
           crew.hasLicense,
           crew.potatoOk,
+          forceAssign: false, // 厳格基準
         );
 
         if (score > bestScore) {
@@ -43,7 +42,6 @@ class AllocationService {
         }
       }
 
-      // 配置を記録
       if (bestCrew != null && bestScore > 0) {
         assignments.add(PositionAssignment(
           position: position,
@@ -51,19 +49,56 @@ class AllocationService {
         ));
         assignedCrewIds.add(bestCrew.id);
       } else {
-        // 適切なクルーが見つからない場合は未配置
+        // とりあえず未配置としてマーク
         assignments.add(PositionAssignment(position: position));
       }
     }
 
-    // 未配置クルーのリスト
-    final unassigned = availableCrews
+    // フェーズ2: 未配置クルーと未配置ポジションを柔軟にマッチング
+    final unassignedCrews = availableCrews
+        .where((crew) => !assignedCrewIds.contains(crew.id))
+        .toList();
+
+    for (var i = 0; i < assignments.length && unassignedCrews.isNotEmpty; i++) {
+      if (!assignments[i].isAssigned) {
+        // 柔軟な基準で最適なクルーを探す
+        Crew? bestCrew;
+        int bestScore = 0;
+
+        for (final crew in unassignedCrews) {
+          final score = assignments[i].position.getMatchScore(
+            crew.counterSkill,
+            crew.kitchenSkill,
+            crew.hasLicense,
+            crew.potatoOk,
+            forceAssign: true, // 柔軟基準
+          );
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestCrew = crew;
+          }
+        }
+
+        if (bestCrew != null) {
+          assignments[i] = PositionAssignment(
+            position: assignments[i].position,
+            assignedCrew: bestCrew,
+          );
+          assignedCrewIds.add(bestCrew.id);
+          unassignedCrews.remove(bestCrew);
+        }
+      }
+    }
+
+    // それでも未配置のクルーがいる場合（ポジション数11より多い人数の場合）
+    final remainingUnassigned = availableCrews
         .where((crew) => !assignedCrewIds.contains(crew.id))
         .toList();
 
     return AllocationResult(
       assignments: assignments,
-      unassigned: unassigned,
+      unassigned: remainingUnassigned,
     );
   }
 

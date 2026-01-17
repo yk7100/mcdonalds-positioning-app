@@ -138,13 +138,15 @@ class Position {
   }
 
   /// クルーがこのポジションに適しているかをスコア化 (0-100)
+  /// forceAssign=trueの場合、最低スキルレベル要件を無視（全員配置優先）
   int getMatchScore(
     int counterSkill,
     int kitchenSkill,
     bool hasLicense,
-    bool potatoOk,
-  ) {
-    // 必須条件チェック
+    bool potatoOk, {
+    bool forceAssign = false,
+  }) {
+    // 必須条件チェック（免許とポテトは必須）
     if (requiresLicense && !hasLicense) return 0;
     if (requiresPotatoSkill && !potatoOk) return 0;
 
@@ -162,11 +164,15 @@ class Position {
         break;
     }
 
-    // 最低スキルレベル未満は0点
-    if (skillScore < minSkillLevel) return 0;
+    // 全員配置モード: 最低スキルレベル要件を緩和
+    if (!forceAssign && skillScore < minSkillLevel) {
+      return 0; // 通常モードでは要件未満は0点
+    }
 
     // スキルスコアに重要度を加味
-    return (skillScore * (priority / 10)).round();
+    // 最低1点は保証（スキル0でも配置可能にする）
+    final score = (skillScore * (priority / 10)).round();
+    return score > 0 ? score : 1;
   }
 
   @override
