@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/allocation_service.dart';
+import '../services/rating_service.dart';
 import '../models/allocation_result.dart';
+import '../models/allocation_rating.dart';
 import '../models/crew.dart';
 
 class AllocationScreen extends StatefulWidget {
@@ -24,6 +26,11 @@ class _AllocationScreenState extends State<AllocationScreen> {
   // ステップ3: 配置結果
   AllocationResult? _result;
 
+  // 評価機能
+  int _selectedRating = 0;
+  final _commentController = TextEditingController();
+  bool _isRatingSubmitted = false;
+
   void _goToStep2() {
     // ステップ1からステップ2へ: クルーデータを初期化
     final crewCount = _totalStaff.toInt();
@@ -44,7 +51,7 @@ class _AllocationScreenState extends State<AllocationScreen> {
     });
   }
 
-  void _goToStep3() {
+  void _goToStep3() async {
     // バリデーション: 全員の名前が入力されているか
     final hasEmptyName = _todayCrews.any((crew) => crew.name.trim().isEmpty);
     
@@ -58,8 +65,8 @@ class _AllocationScreenState extends State<AllocationScreen> {
       return;
     }
 
-    // 配置計算
-    final result = AllocationService.calculateOptimalAllocation(
+    // 配置計算（学習データを活用）
+    final result = await AllocationService.calculateOptimalAllocation(
       _todayCrews,
       _totalStaff.toInt(),
       _targetSales.toInt(),
@@ -68,6 +75,9 @@ class _AllocationScreenState extends State<AllocationScreen> {
     setState(() {
       _result = result;
       _currentStep = 2;
+      _isRatingSubmitted = false;
+      _selectedRating = 0;
+      _commentController.clear();
     });
   }
 
@@ -76,7 +86,48 @@ class _AllocationScreenState extends State<AllocationScreen> {
       _currentStep = 0;
       _todayCrews = [];
       _result = null;
+      _isRatingSubmitted = false;
+      _selectedRating = 0;
+      _commentController.clear();
     });
+  }
+
+  Future<void> _submitRating() async {
+    if (_selectedRating == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('評価を選択してください'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    // 評価データを作成
+    final rating = AllocationRating.fromAllocationResult(
+      _result!,
+      _totalStaff.toInt(),
+      _targetSales.toInt(),
+      _selectedRating,
+      _commentController.text,
+    );
+
+    // 保存
+    await RatingService.saveRating(rating);
+
+    setState(() {
+      _isRatingSubmitted = true;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ 評価を保存しました！次回の配置に反映されます'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override
@@ -546,7 +597,13 @@ class _AllocationScreenState extends State<AllocationScreen> {
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _buildAllocationResults(_result!),
+              children: [
+                ..._buildAllocationResults(_result!),
+                const SizedBox(height: 16),
+                // 評価UI
+                if (!_isRatingSubmitted) _buildRatingCard(),
+                if (_isRatingSubmitted) _buildRatingSubmittedCard(),
+              ],
             ),
           ),
         ),
@@ -591,6 +648,228 @@ class _AllocationScreenState extends State<AllocationScreen> {
         ),
       ],
     );
+  }
+
+  // 評価カード
+  Widget _buildRatingCard() {
+    return Card(
+      elevation: 3,
+      color: Colors.blue.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.star, color: Colors.orange, size: 28),
+                const SizedBox(width: 8),
+                const Text(
+                  'この配置を評価',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '実際の運用結果を評価してください',
+              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+            const SizedBox(height: 16),
+            // 星評価
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(5, (index) {
+                final starValue = index + 1;
+                return IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedRating = starValue;
+                    });
+                  },
+                  icon: Icon(
+                    _selectedRating >= starValue
+                        ? Icons.star
+                        : Icons.star_border,
+                    color: Colors.orange,
+                    size: 40,
+                  ),
+                );
+              }),
+            ),
+            if (_selectedRating > 0)
+              Center(
+                child: Text(
+                  _getRatingText(_selectedRating),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            // コメント
+            TextField(
+              controller: _commentController,
+              decoration: const InputDecoration(
+                labelText: 'コメント（任意）',
+                hintText: '良かった点や改善点など...',
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            // 送信ボタン
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _submitRating,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.send),
+                    SizedBox(width: 8),
+                    Text(
+                      '評価を送信',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '評価は学習データとして次回の配置計算に活用されます',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 評価送信完了カード
+  Widget _buildRatingSubmittedCard() {
+    return Card(
+      elevation: 3,
+      color: Colors.green.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 60),
+            const SizedBox(height: 12),
+            const Text(
+              '評価ありがとうございます！',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_getRatingText(_selectedRating)} として記録されました',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.green.shade700,
+              ),
+            ),
+            if (_commentController.text.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.comment, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _commentController.text,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.green.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.auto_awesome, size: 16, color: Colors.green),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '次回の配置計算で、この評価が活用されます',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getRatingText(int rating) {
+    switch (rating) {
+      case 5:
+        return '最高 ⭐⭐⭐⭐⭐';
+      case 4:
+        return '良い ⭐⭐⭐⭐';
+      case 3:
+        return '普通 ⭐⭐⭐';
+      case 2:
+        return 'もう一歩 ⭐⭐';
+      case 1:
+        return '改善が必要 ⭐';
+      default:
+        return '';
+    }
   }
 
   List<Widget> _buildAllocationResults(AllocationResult result) {
